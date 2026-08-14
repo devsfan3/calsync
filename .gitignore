@@ -1,0 +1,10 @@
+# Build output — regenerate with ./build.sh
+build/
+
+# Generated app shortcut — regenerate with ./make-shortcut.sh
+CalSync.app/
+
+__pycache__/
+*.pyc
+
+.DS_Store

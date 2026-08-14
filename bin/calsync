@@ -1,0 +1,10 @@
+#!/bin/bash
+# Resolve through any symlinks so this works when linked onto PATH.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ $src != /* ]] && src="$dir/$src"
+done
+ROOT="$(cd -P "$(dirname "$src")/.." && pwd)"
+exec /usr/bin/env python3 "$ROOT/calsync.py" "$@"
