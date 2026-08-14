@@ -1,18 +1,20 @@
-// calbridge — a thin JSON-over-stdio bridge to macOS EventKit.
+// calbridge — a thin JSON bridge to macOS EventKit and Notification Centre.
 //
-// Lives inside CalSyncBridge.app so that macOS attributes the Calendar
-// (TCC) permission to this binary rather than to whatever shell launched it.
+// Lives inside CalSyncBridge.app so that macOS attributes the Calendar (TCC)
+// permission to this bundle rather than to whatever launched it. Input and
+// output are files rather than stdin/stdout because the app is started through
+// LaunchServices, which leaves it no usable stdio — see the note further down.
 //
-// Subcommands:
-//   auth                    request/report calendar access
-//   calendars               list every calendar EventKit can see
-//   events   <json on stdin>  {"calendarIds":[...], "days":N}
-//   create   <json on stdin>  {"calendarId":..,"title":..,"start":..,"end":..,"allDay":Bool,"notes":..}
-//   update   <json on stdin>  {"eventId":..,"title":..,"start":..,"end":..,"allDay":Bool}
-//   delete   <json on stdin>  {"eventId":..}
-//   notify   <json on stdin>  {"title":..,"body":..}
+// Subcommands (input JSON comes from --in, response goes to --out):
+//   auth        request/report calendar access
+//   calendars   list every calendar EventKit can see
+//   events      {"calendarIds":[...], "days":N}
+//   create      {"calendarId":..,"title":..,"start":..,"end":..,"allDay":Bool,"notes":..}
+//   update      {"eventId":..,"title":..,"start":..,"end":..,"allDay":Bool}
+//   delete      {"eventId":..}
+//   notify      {"title":..,"body":..}
 //
-// Every response is a single line of JSON: {"ok":true,...} or {"ok":false,"error":".."}
+// Every response is a single JSON object: {"ok":true,...} or {"ok":false,"error":".."}
 
 import Foundation
 import EventKit

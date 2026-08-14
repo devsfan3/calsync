@@ -2,9 +2,10 @@
 """
 CalSync — mirror approved personal-calendar events onto a work calendar as busy blocks.
 
-Reads a set of iCloud calendars through EventKit, shows anything new on a
+Reads a set of personal calendars through EventKit, shows anything new on a
 local web page, and — only for events you approve — creates a matching
-"busy" block on the Microsoft 365 (Exchange) calendar.
+"busy" block on your work calendar. Any account visible in the macOS Calendar
+app works: iCloud, Microsoft 365 / Exchange, Google, CalDAV.
 
 Everything stays on this Mac: no network calls, no cloud credentials. Calendar
 access goes through CalSyncBridge.app, a small signed helper that holds the
