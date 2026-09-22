@@ -320,6 +320,10 @@ cd ~/calsync && git pull && ./build.sh && calsync install
 `calsync install` restarts the agent onto the new code. Schema migrations run by
 themselves on the next scan. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
+If you are contributing: every change bumps `VERSION` and adds a changelog
+entry in the same commit, so a version always identifies exactly one build.
+[CLAUDE.md](CLAUDE.md) has the rule and the project's other constraints.
+
 ## Uninstall
 
 ```bash

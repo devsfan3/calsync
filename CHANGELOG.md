@@ -4,6 +4,17 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.0.1 — 2026-09-22
+
+### Changed
+
+- Added `CLAUDE.md`, which makes the version bump a standing rule: every change
+  to the repository bumps `VERSION` and adds a changelog entry in the same
+  commit, so `calsync version` always identifies exactly what is running. It
+  also records the constraints worth knowing before changing anything — the
+  no-details rule for work blocks, the LaunchServices requirement, the pinned
+  deployment target, and the event identity scheme.
+
 ## 1.0.0 — 2026-09-22
 
 First versioned release. Everything below was built before versioning started.
