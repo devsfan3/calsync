@@ -25,7 +25,7 @@ work calendar ──────┘       (EventKit)       (state + poll)    127
 
 | | |
 | --- | --- |
-| macOS | 13 (Ventura) or later. Developed and tested on macOS 26. |
+| macOS | 13 (Ventura) or later. Developed on macOS 26–27. |
 | Xcode Command Line Tools | For `swiftc`. Install with `xcode-select --install`. |
 | Python | 3.9+ — the system `python3` is fine. Standard library only. |
 | Calendar accounts | **Both** calendars must be visible in the built-in Calendar app. |
@@ -113,6 +113,7 @@ do want the existing ones, there is a *Review them anyway* button.
 | `calsync scan` | Check for new events right now |
 | `calsync status` | Config, counts, and whether the agent is alive |
 | `calsync test-notify` | Post a test notification banner |
+| `calsync scrub` | Clear notes/location/URL from every block it created |
 | `calsync install` | Install and start the launchd agent |
 | `calsync uninstall` | Stop and remove the agent |
 | `calsync serve` | Run in the foreground (what the agent runs) |
@@ -121,6 +122,14 @@ do want the existing ones, there is a *Review them anyway* button.
 
 **Nothing is written without your approval.** A scan only ever adds rows to a
 queue. Your work calendar is touched when you click *Block this time*.
+
+**The title is the only detail that can reach the work calendar.** Notes,
+location and URL are stripped unconditionally, in the helper itself, on both
+create and update — so no caller can leak them even by passing an extra field.
+A colleague who can see your event details learns the time is taken and nothing
+more. Early builds wrote a note naming the source event onto each block, which
+quietly defeated the point of a generic title; `calsync scrub` clears that from
+blocks already created, and it runs once automatically on upgrade.
 
 **Titles are per-event.** Each pending event offers a generic title (`Busy`), a
 prefixed real title (`[Personal] Dentist`), the real title as-is, or anything
@@ -248,6 +257,15 @@ CalSyncBridge is being blamed. Check **System Settings → Privacy & Security �
 Calendars** for a `CalSyncBridge` entry and enable it. If there is no entry,
 reset with `tccutil reset Calendar local.calsync.bridge` and run
 `calsync status` again.
+
+**`could not launch the bridge: ... error -10825`.** The bundle declares a
+minimum macOS newer than the one you are running, so LaunchServices refuses it —
+confusingly, the binary still runs fine when executed directly, which makes it
+look like a registration problem. Left to itself `swiftc` targets the
+toolchain's newest macOS, which can be a version that does not exist yet, so
+`build.sh` pins the deployment target explicitly. If you see this, re-run
+`./build.sh` and check `otool -l build/CalSyncBridge.app/Contents/MacOS/calbridge
+| grep minos` reports 13.0.
 
 **macOS asks for Calendar access again after a rebuild.** Expected. `build.sh`
 re-signs the bundle, which changes its code hash, and TCC treats that as a

@@ -160,6 +160,12 @@ func describe(_ ev: EKEvent) -> [String: Any] {
         "calendarTitle": ev.calendar?.title ?? "",
         "recurring": ev.hasRecurrenceRules,
         "status": statusName(ev.status),
+        // Whether the event carries anything descriptive, reported as a flag
+        // rather than as content so a mirror can be audited without the
+        // private text ending up in a log or a JSON dump.
+        "hasDetails": !(ev.notes ?? "").isEmpty
+            || !(ev.location ?? "").isEmpty
+            || ev.url != nil,
     ]
     if let s = ev.startDate { out["start"] = iso.string(from: s) }
     if let e = ev.endDate { out["end"] = iso.string(from: e) }
@@ -174,6 +180,20 @@ func markBusy(_ ev: EKEvent) {
     if let cal = ev.calendar, cal.supportedEventAvailabilities.contains(.busy) {
         ev.availability = .busy
     }
+}
+
+/// Clear every field that could describe what an event actually is.
+///
+/// A mirror exists to say "this time is taken" and nothing more. The title is
+/// chosen deliberately at approval time; everything else is stripped here, on
+/// both create and update, so no caller can leak detail onto the work calendar
+/// by passing an extra field. A colleague with permission to see event details
+/// must learn nothing beyond the fact that the time is busy.
+func stripDetails(_ ev: EKEvent) {
+    ev.notes = nil
+    ev.location = nil
+    ev.structuredLocation = nil
+    ev.url = nil
 }
 
 func statusName(_ s: EKEventStatus) -> String {
@@ -241,9 +261,9 @@ func cmdCreate() -> Never {
     ev.startDate = start
     ev.endDate = end
     ev.isAllDay = (input["allDay"] as? Bool) ?? false
-    if let notes = input["notes"] as? String, !notes.isEmpty { ev.notes = notes }
-    // The whole point of the mirror: show the time as taken.
+    // The whole point of the mirror: show the time as taken, and nothing else.
     markBusy(ev)
+    stripDetails(ev)
 
     do {
         try store.save(ev, span: .thisEvent, commit: true)
@@ -257,15 +277,21 @@ func cmdUpdate() -> Never {
     let input = readInputJSON()
     requireAccess()
 
-    guard let eventId = input["eventId"] as? String,
-          let ev = store.event(withIdentifier: eventId) else {
-        emit(["ok": false, "error": "event no longer exists", "missing": true])
+    guard let eventId = input["eventId"] as? String else { fail("eventId is required") }
+    guard let ev = store.event(withIdentifier: eventId) else {
+        // Not an error: the block was deleted by hand. Report it as a fact the
+        // caller can branch on, the same way delete does, rather than as a
+        // failure — callers need to tell "gone" apart from "could not write".
+        emit(["ok": true, "missing": true])
     }
     if let t = input["title"] as? String { ev.title = t }
     if let s = parseDate(input["start"]) { ev.startDate = s }
     if let e = parseDate(input["end"]) { ev.endDate = e }
     if let a = input["allDay"] as? Bool { ev.isAllDay = a }
     markBusy(ev)
+    // Every field is optional, so an update carrying only an eventId is a
+    // scrub: it leaves the time and title alone and clears the detail fields.
+    stripDetails(ev)
 
     do {
         try store.save(ev, span: .thisEvent, commit: true)

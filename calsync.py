@@ -18,6 +18,7 @@ Commands:
     calsync setup       open the calendar-picker page
     calsync status      show config and pending counts
     calsync test-notify send a test notification banner
+    calsync scrub       clear notes/location from every work block it created
     calsync install     install and start the launchd background agent
     calsync uninstall   stop and remove the launchd agent
 """
@@ -50,8 +51,6 @@ LOG_PATH = os.path.join(STATE_DIR, "calsync.log")
 RUN_DIR = os.path.join(STATE_DIR, "run")
 LABEL = "local.calsync.agent"
 PLIST_PATH = os.path.join(HOME, "Library", "LaunchAgents", f"{LABEL}.plist")
-
-MIRROR_MARKER = "[calsync]"
 
 DEFAULT_CONFIG = {
     "source_calendar_ids": [],
@@ -241,7 +240,7 @@ CREATE INDEX IF NOT EXISTS idx_pending ON events(pending_action);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _db_lock = threading.Lock()
 _db: sqlite3.Connection | None = None
@@ -295,6 +294,13 @@ def event_key(ev: dict) -> str:
 # --------------------------------------------------------------------------
 
 def compose_title(source_title: str, mode: str, cfg: dict) -> str:
+    """Build the title for a work block.
+
+    Detail reaches the work calendar only through this function, and only
+    because you picked it for that specific event. Nothing is ever copied
+    automatically: the default is the generic wording, and notes, locations and
+    URLs are stripped unconditionally.
+    """
     source_title = source_title.strip() or "Personal event"
     if mode == "copy":
         return source_title
@@ -348,6 +354,44 @@ def row_is_weekend(row) -> bool:
 def schema_version(conn) -> int:
     row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
     return int(row["value"]) if row else 0
+
+
+def set_schema_version(conn, version: int) -> None:
+    conn.execute(
+        "INSERT INTO meta(key,value) VALUES('schema_version',?)"
+        " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(version),),
+    )
+
+
+def scrub_mirrors() -> tuple[int, int]:
+    """Clear notes, location and URL from every work block we created.
+
+    Early builds wrote a note naming the personal event onto each mirror, which
+    quietly undid the point of a generic title: the block read "Busy" while its
+    description spelled out the appointment. The helper strips those fields on
+    any update, so an update carrying nothing but an event id scrubs it.
+
+    Returns (scrubbed, unreachable). An event deleted by hand counts as neither.
+    """
+    conn = db()
+    with _db_lock:
+        rows = conn.execute(
+            "SELECT key, mirror_event_id FROM events"
+            " WHERE mirror_event_id IS NOT NULL AND mirror_event_id != ''"
+        ).fetchall()
+
+    scrubbed = failed = 0
+    for row in rows:
+        try:
+            result = bridge("update", {"eventId": row["mirror_event_id"]})
+        except BridgeError as exc:
+            log(f"could not scrub {row['key']}: {exc}")
+            failed += 1
+            continue
+        if not result.get("missing"):
+            scrubbed += 1
+    return scrubbed, failed
 
 
 def migrate_keys(conn, events: list) -> int:
@@ -409,16 +453,26 @@ def scan(cfg: dict) -> dict:
     conn = db()
 
     with _db_lock:
-        if schema_version(conn) < SCHEMA_VERSION:
+        version = schema_version(conn)
+        if version < 1:
             moved = migrate_keys(conn, events)
-            conn.execute(
-                "INSERT INTO meta(key,value) VALUES('schema_version',?)"
-                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (str(SCHEMA_VERSION),),
-            )
+            set_schema_version(conn, 1)
             conn.commit()
             log(f"migrated {moved} events to the current key scheme")
 
+    # Version 2 clears the description notes that early builds wrote onto every
+    # mirror. It runs outside the database lock because it makes one helper
+    # call per event, and the version is only advanced once every one succeeds.
+    if version < 2:
+        cleaned, failed = scrub_mirrors()
+        log(f"scrubbed details from {cleaned} existing work blocks"
+            + (f", {failed} could not be reached" if failed else ""))
+        if not failed:
+            with _db_lock:
+                set_schema_version(conn, 2)
+                conn.commit()
+
+    with _db_lock:
         seen_keys = set()
         for ev in events:
             if ev.get("status") == "canceled":
@@ -633,13 +687,16 @@ def approve(key: str, title: str, cfg: dict) -> tuple[bool, str]:
         if row["status"] == "approved" and row["mirror_event_id"]:
             return False, "already on your work calendar"
 
+        # Time, title, and nothing else. The link back to the personal event is
+        # kept here in the local database, never written onto the work calendar
+        # — a note naming the source event would give away exactly what a
+        # generic title is there to hide.
         payload = {
             "calendarId": cfg["target_calendar_id"],
             "title": title,
             "start": row["start"],
             "end": row["end"],
             "allDay": bool(row["all_day"]),
-            "notes": f"{MIRROR_MARKER} mirrors “{row['title']}” from {row['source_cal']}.",
         }
 
     try:
@@ -1086,6 +1143,8 @@ class Handler(BaseHTTPRequestHandler):
         return "".join(parts)
 
     def new_card(self, row) -> str:
+        # Whichever of these you pick is the *only* thing that reaches the work
+        # calendar besides the time — notes and location are always stripped.
         cfg = self.cfg
         source_title = row["title"] or "Personal event"
         mode = cfg["default_title_mode"]
@@ -1208,7 +1267,9 @@ class Handler(BaseHTTPRequestHandler):
 <div class="opts">{modes}</div>
 <div class="row"><label class="meta">Generic title</label>
 <input type="text" name="generic" value="{esc(cfg['generic_title'])}"></div>
-<div class="note">You can still change the title on any individual event.</div></fieldset>
+<div class="note">You can still change the title on any individual event. The
+ title is the only thing that ever reaches your work calendar besides the time —
+ notes, locations and URLs are always stripped.</div></fieldset>
 
 <fieldset><legend>Behaviour</legend>
 <div class="row" style="margin-bottom:9px"><label class="meta">Look ahead</label>
@@ -1394,6 +1455,13 @@ def main() -> None:
         cmd_scan(cfg)
     elif command == "status":
         cmd_status(cfg)
+    elif command == "scrub":
+        scrubbed, failed = scrub_mirrors()
+        print(f"Scrubbed {scrubbed} work block{'s' if scrubbed != 1 else ''}"
+              " — notes, location and URL cleared.")
+        if failed:
+            print(f"{failed} could not be reached; see the log.", file=sys.stderr)
+            sys.exit(1)
     elif command == "test-notify":
         notify("CalSync", "Test banner — notifications are reaching you.")
         print("Notification posted. If no banner appeared, check System Settings >"
