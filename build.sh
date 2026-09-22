@@ -14,7 +14,18 @@ MACOS="$APP/Contents/MacOS"
 rm -rf "$APP"
 mkdir -p "$MACOS"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+# VERSION is the single source of truth. Stamping it into the bundle alongside
+# the build date and commit is what lets `calsync version` tell you whether the
+# compiled helper matches the checkout — editing a .py file and forgetting to
+# rebuild is otherwise silent.
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+BUILD_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+GIT_COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if ! git -C "$ROOT" diff --quiet HEAD 2>/dev/null; then
+    GIT_COMMIT="$GIT_COMMIT-dirty"
+fi
+
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -30,9 +41,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$VERSION</string>
+    <key>CalSyncBuildDate</key>
+    <string>$BUILD_DATE</string>
+    <key>CalSyncGitCommit</key>
+    <string>$GIT_COMMIT</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
@@ -89,4 +104,4 @@ codesign --force --sign - --identifier local.calsync.bridge "$APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
     -f "$APP" 2>/dev/null || true
 
-echo "Built $APP"
+echo "Built $APP ($VERSION, $GIT_COMMIT)"

@@ -112,6 +112,7 @@ do want the existing ones, there is a *Review them anyway* button.
 | `calsync setup` | Open the configuration page |
 | `calsync scan` | Check for new events right now |
 | `calsync status` | Config, counts, and whether the agent is alive |
+| `calsync version` | Version of this checkout and of the built helper |
 | `calsync test-notify` | Post a test notification banner |
 | `calsync scrub` | Clear notes/location/URL from every block it created |
 | `calsync install` | Install and start the launchd agent |
@@ -288,6 +289,36 @@ sleeping Mac also does not poll; it picks up at the next tick after waking.
 
 **No notification banners.** Check for an active Focus mode, then **System
 Settings → Notifications → CalSyncBridge**. Verify with `calsync test-notify`.
+
+## Versions and updates
+
+The version lives in the `VERSION` file. `build.sh` stamps it into the app
+bundle along with the build date and commit, so you can always tell what is
+actually installed rather than what is checked out:
+
+```bash
+calsync version
+```
+
+```
+CalSync 1.0.0
+  helper   1.0.0  (built 2026-09-22, commit 8505b94)
+  python   3.11.4  /usr/local/bin/python3
+```
+
+The two halves are versioned separately because they are built separately:
+editing `calsync.py` takes effect on the next run, editing the Swift needs
+`./build.sh`. `calsync version` warns when they disagree, or when the helper was
+built from uncommitted changes.
+
+To update:
+
+```bash
+cd ~/calsync && git pull && ./build.sh && calsync install
+```
+
+`calsync install` restarts the agent onto the new code. Schema migrations run by
+themselves on the next scan. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Uninstall
 

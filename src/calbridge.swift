@@ -7,9 +7,10 @@
 //
 // Subcommands (input JSON comes from --in, response goes to --out):
 //   auth        request/report calendar access
+//   version     report bundle version, build date and commit
 //   calendars   list every calendar EventKit can see
 //   events      {"calendarIds":[...], "days":N}
-//   create      {"calendarId":..,"title":..,"start":..,"end":..,"allDay":Bool,"notes":..}
+//   create      {"calendarId":..,"title":..,"start":..,"end":..,"allDay":Bool}
 //   update      {"eventId":..,"title":..,"start":..,"end":..,"allDay":Bool}
 //   delete      {"eventId":..}
 //   notify      {"title":..,"body":..}
@@ -212,6 +213,18 @@ func cmdAuth() -> Never {
     emit(["ok": granted, "granted": granted, "error": err ?? ""])
 }
 
+/// Report what this bundle was built from. Deliberately requires no calendar
+/// access, so it still answers when permission is missing or revoked.
+func cmdVersion() -> Never {
+    let info = Bundle.main.infoDictionary ?? [:]
+    emit([
+        "ok": true,
+        "version": info["CFBundleShortVersionString"] as? String ?? "unknown",
+        "buildDate": info["CalSyncBuildDate"] as? String ?? "",
+        "commit": info["CalSyncGitCommit"] as? String ?? "",
+    ])
+}
+
 func cmdCalendars() -> Never {
     requireAccess()
     let cals = store.calendars(for: .event).map(describe)
@@ -405,11 +418,12 @@ while i < argv.count {
 }
 
 guard let command = positional.first else {
-    fail("usage: calbridge [--in FILE] [--out FILE] <auth|calendars|events|create|update|delete|notify>")
+    fail("usage: calbridge [--in FILE] [--out FILE] <auth|version|calendars|events|create|update|delete|notify>")
 }
 
 switch command {
 case "auth": cmdAuth()
+case "version": cmdVersion()
 case "calendars": cmdCalendars()
 case "events": cmdEvents()
 case "create": cmdCreate()

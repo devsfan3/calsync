@@ -10,10 +10,12 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEST="${1:-$HOME/Desktop}"
 APP="$DEST/CalSync.app"
 
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -24,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>CalSync</string>
     <key>CFBundleIconFile</key><string>CalSync</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
     <key>LSUIElement</key><true/>
 </dict>
 PLIST
@@ -64,4 +66,4 @@ touch "$APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
     -f "$APP" 2>/dev/null || true
 
-echo "Built $APP"
+echo "Built $APP ($VERSION)"

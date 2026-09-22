@@ -17,6 +17,7 @@ Commands:
     calsync open        open the web UI in your browser
     calsync setup       open the calendar-picker page
     calsync status      show config and pending counts
+    calsync version     show the version of this checkout and the built helper
     calsync test-notify send a test notification banner
     calsync scrub       clear notes/location from every work block it created
     calsync install     install and start the launchd background agent
@@ -51,6 +52,18 @@ LOG_PATH = os.path.join(STATE_DIR, "calsync.log")
 RUN_DIR = os.path.join(STATE_DIR, "run")
 LABEL = "local.calsync.agent"
 PLIST_PATH = os.path.join(HOME, "Library", "LaunchAgents", f"{LABEL}.plist")
+
+
+def read_version() -> str:
+    """The version of this checkout, from the VERSION file next to this script."""
+    try:
+        with open(os.path.join(ROOT, "VERSION")) as fh:
+            return fh.read().strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+VERSION = read_version()
 
 DEFAULT_CONFIG = {
     "source_calendar_ids": [],
@@ -977,7 +990,8 @@ class Handler(BaseHTTPRequestHandler):
         flash_html = (
             f'<div class="flash{" bad" if bad else ""}">{esc(flash)}</div>' if flash else ""
         )
-        sub = f"every {cfg['poll_minutes']} min · {cfg['lookahead_days']} days ahead"
+        sub = (f"v{VERSION} · every {cfg['poll_minutes']} min ·"
+               f" {cfg['lookahead_days']} days ahead")
         return PAGE.format(style=STYLE, sub=esc(sub), nav=nav, flash=flash_html, body=body)
 
     # -- routes -----------------------------------------------------------
@@ -1411,7 +1425,44 @@ def cmd_scan(cfg: dict) -> None:
         print(f"Review them at {url(cfg)}")
 
 
+def helper_build() -> dict:
+    """What the compiled helper reports about itself, or {} if it cannot answer."""
+    try:
+        return bridge("version", timeout=45)
+    except BridgeError:
+        return {}
+
+
+def cmd_version() -> None:
+    build = helper_build()
+    print(f"CalSync {VERSION}")
+    if not build:
+        print("  helper   not built — run ./build.sh")
+        return
+
+    stamp = build.get("buildDate", "")
+    detail = ", ".join(filter(None, [
+        f"built {stamp[:10]}" if stamp else "",
+        f"commit {build['commit']}" if build.get("commit") else "",
+    ]))
+    print(f"  helper   {build.get('version', '?')}" + (f"  ({detail})" if detail else ""))
+    print(f"  python   {sys.version.split()[0]}  {sys.executable}")
+
+    # The two halves are versioned separately because they are built
+    # separately: editing calsync.py takes effect immediately, editing the
+    # Swift needs ./build.sh. A mismatch means one of them is stale.
+    if build.get("version") != VERSION:
+        # Flush first: the warning goes to stderr, and without this the two
+        # streams interleave and it lands above the detail it refers to.
+        sys.stdout.flush()
+        print(f"\nThe helper was built from {build.get('version')}, but this"
+              f" checkout is {VERSION}. Run ./build.sh.", file=sys.stderr)
+    elif str(build.get("commit", "")).endswith("-dirty"):
+        print("\nThe helper was built from uncommitted changes.")
+
+
 def cmd_status(cfg: dict) -> None:
+    print(f"CalSync {VERSION}")
     try:
         cals = {c["id"]: c for c in bridge("calendars")["calendars"]}
     except BridgeError as exc:
@@ -1455,6 +1506,8 @@ def main() -> None:
         cmd_scan(cfg)
     elif command == "status":
         cmd_status(cfg)
+    elif command in ("version", "--version", "-v"):
+        cmd_version()
     elif command == "scrub":
         scrubbed, failed = scrub_mirrors()
         print(f"Scrubbed {scrubbed} work block{'s' if scrubbed != 1 else ''}"
