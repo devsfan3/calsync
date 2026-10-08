@@ -4,6 +4,16 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.0.2 — 2026-10-08
+
+### Changed
+
+- `CLAUDE.md` now covers parallel agents. When a job is split across agents
+  working in separate git worktrees, only the agent that merges into `main`
+  bumps `VERSION` and writes the changelog entry, once per merged branch.
+  Every change on `main` still moves the version; the split just stops
+  parallel branches from conflicting on these two files. No code changes.
+
 ## 1.0.1 — 2026-09-22
 
 ### Changed

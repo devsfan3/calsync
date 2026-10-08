@@ -29,6 +29,22 @@ So the sequence for any piece of work is:
    time and `calsync version` will otherwise report the old one and warn.
 5. Commit all of it together.
 
+### When several agents work in parallel
+
+The steps above are for one agent working alone. When a job is split across
+parallel agents, each in its own git worktree, `VERSION` and `CHANGELOG.md`
+are shared files: if every branch edits them, every merge conflicts on them.
+So the job divides:
+
+- **Worker agents** never edit `VERSION` or `CHANGELOG.md`. Each one puts the
+  bump it proposes (patch / minor / major) and its draft changelog text in its
+  commit message or final report.
+- **The integrator**, the one agent that merges branches into `main` one at a
+  time, does steps 2–5 for each merged branch: it bumps `VERSION`, writes the
+  `CHANGELOG.md` entry, runs `./build.sh`, and commits, in the merge commit or
+  in a commit right after it. The rule is unchanged: every change that lands
+  on `main` moves the version.
+
 Tag and release when the work is a meaningful stopping point, not on every
 commit:
 
