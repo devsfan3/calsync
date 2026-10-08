@@ -28,6 +28,21 @@ So the sequence for any piece of work is:
 4. `./build.sh` — always, since the version is stamped into the bundle at build
    time and `calsync version` will otherwise report the old one and warn.
 5. Commit all of it together.
+6. Once the commit is on `main` in the installed checkout, refresh the three
+   things that hold a version of their own:
+   - `./build.sh` again, if step 4 ran in a worktree. That build went into the
+     worktree's own `build/`, not the helper the installed copy uses.
+   - `bin/calsync install` restarts the background agent. The running agent
+     reads `VERSION` once at startup, so until it restarts the review page
+     header still shows the old number.
+   - `./make-shortcut.sh` rebuilds the Desktop launcher, which has the version
+     stamped into its `Info.plist`. Pass the same destination it was built
+     to, if that was not the Desktop.
+
+   Run both from the installed checkout, never from a worktree: `install`
+   points the agent at whichever copy of `calsync.py` runs it, and the
+   launcher records the path of the checkout that built it. Skip this step
+   on a machine where CalSync is not installed.
 
 ### When several agents work in parallel
 
@@ -42,7 +57,8 @@ So the job divides:
 - **The integrator**, the one agent that merges branches into `main` one at a
   time, does steps 2–5 for each merged branch: it bumps `VERSION`, writes the
   `CHANGELOG.md` entry, runs `./build.sh`, and commits, in the merge commit or
-  in a commit right after it. The rule is unchanged: every change that lands
+  in a commit right after it. Step 6 also belongs to the integrator, once the
+  merged result is on `main` in the installed checkout. The rule is unchanged: every change that lands
   on `main` moves the version.
 
 Tag and release when the work is a meaningful stopping point, not on every

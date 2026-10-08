@@ -4,6 +4,16 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.0.3 — 2026-10-08
+
+### Changed
+
+- `CLAUDE.md` adds a final step after every version bump: rebuild the helper
+  in the installed checkout, restart the background agent with
+  `bin/calsync install`, and rebuild the Desktop launcher with
+  `./make-shortcut.sh`. Without it, the review page and the launcher keep
+  showing the previous version after an update. No code changes.
+
 ## 1.0.2 — 2026-10-08
 
 ### Changed
