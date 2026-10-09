@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The Python is plain standard library, so the tests run anywhere. Linux is
+  # the quick check across the supported range: 3.9 is the macOS system
+  # Python, the oldest CalSync promises to support.
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests -v
+
+  # The real platform: compile the Swift helper exactly as a user would, then
+  # run the tests on the runner's own system Python.
+  macos:
+    name: macOS build + system Python
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./build.sh
+      - run: /usr/bin/python3 --version
+      - run: /usr/bin/python3 -m unittest discover -s tests -v

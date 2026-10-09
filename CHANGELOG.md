@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.1.2 — 2026-10-09
+
+### Changed
+
+- The tests now run automatically on GitHub for every push and pull request:
+  on Linux under Python 3.9, 3.11 and 3.13, and on macOS, where the Swift
+  helper is also compiled with `./build.sh`. No change to CalSync itself.
+
 ## 1.1.1 — 2026-10-09
 
 ### Fixes

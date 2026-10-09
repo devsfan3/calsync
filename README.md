@@ -1,5 +1,7 @@
 # CalSync
 
+[![Tests](https://github.com/devsfan3/calsync/actions/workflows/tests.yml/badge.svg)](https://github.com/devsfan3/calsync/actions/workflows/tests.yml)
+
 Watch your personal calendars, get asked about anything new, and — only for
 events you approve — put a matching **busy** block on your work calendar.
 
@@ -345,6 +347,11 @@ python3 -m unittest discover -s tests
 
 They never touch your calendars, config or state: they run against a
 throwaway home folder.
+
+GitHub Actions runs them on every push and pull request
+([`.github/workflows/tests.yml`](.github/workflows/tests.yml)): on Linux
+under Python 3.9, 3.11 and 3.13, and on macOS, where it also compiles the
+Swift helper with `./build.sh`.
 
 ## Uninstall
 
