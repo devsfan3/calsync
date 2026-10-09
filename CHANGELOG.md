@@ -4,6 +4,28 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.0.4 — 2026-10-09
+
+### Privacy
+
+- The calendar helper now only does what CalSync itself needs. It reads its
+  own copy of the config and refuses to read events from any calendar other
+  than the personal calendars you chose, or to create, change or delete
+  events anywhere but your chosen work calendar. Before, any program running
+  as you could launch it and use its Calendar permission to read or change
+  every calendar without macOS asking.
+- Everything CalSync keeps on disk is now readable by your account only. The
+  database, log and temporary helper files were created world-readable; they
+  are now `0600` inside `0700` folders, and existing files are fixed the next
+  time any `calsync` command runs.
+- The web UI token is no longer written to the log, and copies left there by
+  earlier versions are redacted.
+
+### Note
+
+- If you switch to a different work calendar, blocks CalSync made on the old
+  one can no longer be updated or removed from CalSync. Delete them by hand.
+
 ## 1.0.3 — 2026-10-08
 
 ### Changed

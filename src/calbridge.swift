@@ -123,6 +123,40 @@ func requireAccess() {
     }
 }
 
+// MARK: - Scope
+//
+// This bundle holds the Calendar permission, and LaunchServices will start it
+// for any process running as this user. Left unscoped it would hand every such
+// process full read and write access to every calendar without macOS ever
+// asking. So the helper reads its own copy of the CalSync config and refuses
+// anything outside it: events are read only from the chosen personal
+// calendars, and blocks are written, changed or removed only on the chosen
+// work calendar. The caller's payload is never trusted to widen that.
+
+struct Scope {
+    let sources: Set<String>
+    let target: String
+}
+
+func loadScope() -> Scope {
+    let path = NSHomeDirectory() + "/.config/calsync/config.json"
+    guard let data = FileManager.default.contents(atPath: path),
+          let cfg = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        fail("could not read \(path) — choose your calendars on the Setup page first")
+    }
+    let sources = Set((cfg["source_calendar_ids"] as? [String]) ?? [])
+    let target = (cfg["target_calendar_id"] as? String) ?? ""
+    return Scope(sources: sources, target: target)
+}
+
+/// The configured work calendar. Every write goes through this check.
+func requireTarget(_ scope: Scope, _ calId: String?) {
+    guard !scope.target.isEmpty else { fail("no work calendar is configured") }
+    guard calId == scope.target else {
+        fail("refused: only the configured work calendar can be changed")
+    }
+}
+
 // MARK: - Serialization
 
 func describe(_ cal: EKCalendar) -> [String: Any] {
@@ -233,12 +267,18 @@ func cmdCalendars() -> Never {
 
 func cmdEvents() -> Never {
     let input = readInputJSON()
-    requireAccess()
+    let scope = loadScope()
 
+    // No "all calendars" fallback: an empty or unlisted id is refused rather
+    // than widened.
     let ids = input["calendarIds"] as? [String] ?? []
+    if ids.isEmpty { fail("no calendar ids given") }
+    if let stray = ids.first(where: { !scope.sources.contains($0) }) {
+        fail("refused: calendar \(stray) is not one of the configured personal calendars")
+    }
+    requireAccess()
     let days = input["days"] as? Int ?? 60
-    let all = store.calendars(for: .event)
-    let selected = ids.isEmpty ? all : all.filter { ids.contains($0.calendarIdentifier) }
+    let selected = store.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
 
     if selected.isEmpty { fail("none of the requested calendar ids exist") }
 
@@ -255,6 +295,8 @@ func cmdEvents() -> Never {
 
 func cmdCreate() -> Never {
     let input = readInputJSON()
+    let scope = loadScope()
+    requireTarget(scope, input["calendarId"] as? String)
     requireAccess()
 
     guard let calId = input["calendarId"] as? String,
@@ -288,6 +330,7 @@ func cmdCreate() -> Never {
 
 func cmdUpdate() -> Never {
     let input = readInputJSON()
+    let scope = loadScope()
     requireAccess()
 
     guard let eventId = input["eventId"] as? String else { fail("eventId is required") }
@@ -297,6 +340,7 @@ func cmdUpdate() -> Never {
         // failure — callers need to tell "gone" apart from "could not write".
         emit(["ok": true, "missing": true])
     }
+    requireTarget(scope, ev.calendar?.calendarIdentifier)
     if let t = input["title"] as? String { ev.title = t }
     if let s = parseDate(input["start"]) { ev.startDate = s }
     if let e = parseDate(input["end"]) { ev.endDate = e }
@@ -316,6 +360,7 @@ func cmdUpdate() -> Never {
 
 func cmdDelete() -> Never {
     let input = readInputJSON()
+    let scope = loadScope()
     requireAccess()
 
     guard let eventId = input["eventId"] as? String else { fail("eventId is required") }
@@ -323,6 +368,7 @@ func cmdDelete() -> Never {
         // Already gone — that is the state the caller wanted.
         emit(["ok": true, "missing": true])
     }
+    requireTarget(scope, ev.calendar?.calendarIdentifier)
     do {
         try store.remove(ev, span: .thisEvent, commit: true)
     } catch {

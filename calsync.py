@@ -109,6 +109,45 @@ def log(msg: str) -> None:
         pass
 
 
+def harden_permissions(token: str) -> None:
+    """Make everything CalSync keeps on disk readable by this user only.
+
+    The database holds every personal event title and location, the log holds
+    titles too, and the config holds the web UI token. Created under the
+    default umask they came out world-readable, and macOS home folders are not
+    always closed to other accounts. The umask covers whatever gets created
+    from here on; the chmods fix what earlier versions already left behind.
+
+    Older builds also logged the full tokenised URL at every startup, so any
+    copy of the token still in the log is redacted here.
+    """
+    os.umask(0o077)
+    for path in (CONFIG_DIR, STATE_DIR, RUN_DIR):
+        try:
+            os.makedirs(path, exist_ok=True)
+            os.chmod(path, 0o700)
+        except OSError:
+            pass
+    for path in (CONFIG_PATH, DB_PATH, DB_PATH + "-journal", LOG_PATH):
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    if not token:
+        return
+    # Rewritten in place, not replaced: under launchd our own stdout is this
+    # file, and a rename would leave it pointing at a deleted inode.
+    try:
+        with open(LOG_PATH, "r+") as fh:
+            text = fh.read()
+            if token in text:
+                fh.seek(0)
+                fh.write(text.replace(token, "<redacted>"))
+                fh.truncate()
+    except OSError:
+        pass
+
+
 # --------------------------------------------------------------------------
 # Config
 # --------------------------------------------------------------------------
@@ -1406,7 +1445,8 @@ def uninstall_agent() -> None:
 def cmd_serve(cfg: dict) -> None:
     server = Server(("127.0.0.1", int(cfg["port"])), Handler, cfg)
     threading.Thread(target=poller, args=(server,), daemon=True).start()
-    log(f"serving on {url(cfg)}")
+    # The tokenised URL stays out of the log; `calsync open` prints it on demand.
+    log(f"serving on http://127.0.0.1:{cfg['port']}/")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -1498,7 +1538,9 @@ def cmd_status(cfg: dict) -> None:
 
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "open"
+    os.umask(0o077)
     cfg = load_config()
+    harden_permissions(cfg["token"])
 
     if command == "serve":
         cmd_serve(cfg)
