@@ -22,6 +22,7 @@ Commands:
     calsync scrub       clear notes/location from every work block it created
     calsync install     install and start the launchd background agent
     calsync uninstall   stop and remove the launchd agent
+    calsync rotate-token  issue a new web UI token, signing out every browser
 """
 
 from __future__ import annotations
@@ -38,8 +39,9 @@ import threading
 import time
 import webbrowser
 from datetime import datetime, timedelta, timezone
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 HOME = os.path.expanduser("~")
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -992,11 +994,44 @@ class Handler(BaseHTTPRequestHandler):
         return self.server.cfg
 
     def authorised(self, query: dict) -> bool:
-        token = self.cfg["token"]
-        if (query.get("token") or [None])[0] == token:
+        token = self.cfg["token"].encode()
+        offered = [(query.get("token") or [None])[0]]
+        try:
+            jar = SimpleCookie(self.headers.get("Cookie", ""))
+        except CookieError:
+            jar = SimpleCookie()
+        if "calsync_token" in jar:
+            offered.append(jar["calsync_token"].value)
+        # Constant-time, and against the parsed cookie value: a substring test
+        # on the raw header would also accept the token inside another cookie.
+        return any(
+            value is not None and secrets.compare_digest(value.encode(), token)
+            for value in offered
+        )
+
+    def own_origins(self) -> set:
+        port = self.cfg["port"]
+        return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+    def trusted_request(self, post: bool) -> bool:
+        """Reject requests that did not come from this page.
+
+        The Host check stops DNS rebinding: a page on some other domain that
+        resolves to 127.0.0.1 still sends its own name. The Origin check on
+        POST stops cross-site forms. SameSite=Strict alone is not enough,
+        because browsers treat every port on 127.0.0.1 as the same site, so
+        any other local web server's page could otherwise post here. A
+        request with neither Origin nor Referer is not from a browser form.
+        """
+        if self.headers.get("Host", "") not in self.own_origins():
+            return False
+        if not post:
             return True
-        cookie = self.headers.get("Cookie", "")
-        return f"calsync_token={token}" in cookie
+        source = self.headers.get("Origin") or self.headers.get("Referer")
+        if not source:
+            return True
+        parsed = urlparse(source)
+        return parsed.scheme == "http" and parsed.netloc in self.own_origins()
 
     def send_html(self, body: str, code: int = 200, set_token: bool = False) -> None:
         data = body.encode()
@@ -1005,16 +1040,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         if set_token:
-            self.send_header(
-                "Set-Cookie",
-                f"calsync_token={self.cfg['token']}; Path=/; SameSite=Strict; Max-Age=31536000",
-            )
+            self.set_token_cookie()
         self.end_headers()
         self.wfile.write(data)
 
-    def redirect(self, target: str) -> None:
+    def set_token_cookie(self) -> None:
+        self.send_header(
+            "Set-Cookie",
+            f"calsync_token={self.cfg['token']}; Path=/; HttpOnly; SameSite=Strict;"
+            " Max-Age=31536000",
+        )
+
+    def redirect(self, target: str, set_token: bool = False) -> None:
         self.send_response(303)
         self.send_header("Location", target)
+        if set_token:
+            self.set_token_cookie()
         self.end_headers()
 
     def render(self, page: str, body: str, flash: str = "", bad: bool = False) -> str:
@@ -1038,10 +1079,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if not self.trusted_request(post=False):
+            self.send_html("<h1>403</h1><p>Unexpected host.</p>", 403)
+            return
         if not self.authorised(query):
             self.send_html("<h1>403</h1><p>Missing or bad token.</p>", 403)
             return
-        fresh = (query.get("token") or [None])[0] is not None
+        if "token" in query:
+            # Trade the tokenised link for the cookie straight away, so the
+            # token does not sit in the address bar or get shared with a
+            # screenshot.
+            rest = urlencode({k: v for k, v in query.items() if k != "token"}, doseq=True)
+            self.redirect(parsed.path + (f"?{rest}" if rest else ""), set_token=True)
+            return
         flash = (query.get("msg") or [""])[0]
         bad = (query.get("err") or [""])[0] == "1"
 
@@ -1068,10 +1118,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html("<h1>404</h1>", 404)
             return
 
-        self.send_html(self.render(parsed.path, body, flash, bad), set_token=fresh)
+        self.send_html(self.render(parsed.path, body, flash, bad))
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if not self.trusted_request(post=True):
+            self.send_html("<h1>403</h1><p>Cross-site request refused.</p>", 403)
+            return
         if not self.authorised(parse_qs(parsed.query)):
             self.send_html("<h1>403</h1>", 403)
             return
@@ -1108,8 +1161,15 @@ class Handler(BaseHTTPRequestHandler):
             cfg = self.cfg
             cfg["source_calendar_ids"] = form.get("sources", [])
             cfg["target_calendar_id"] = field("target")
-            cfg["lookahead_days"] = max(1, min(365, int(field("days", "60") or 60)))
-            cfg["poll_minutes"] = max(1, min(1440, int(field("poll", "20") or 20)))
+            def number(name, current, lo, hi):
+                # Anything that is not a whole number keeps the current value.
+                try:
+                    return max(lo, min(hi, int(field(name).strip())))
+                except ValueError:
+                    return current
+
+            cfg["lookahead_days"] = number("days", cfg["lookahead_days"], 1, 365)
+            cfg["poll_minutes"] = number("poll", cfg["poll_minutes"], 1, 1440)
             cfg["default_title_mode"] = field("mode", "generic")
             cfg["generic_title"] = field("generic", "Busy").strip() or "Busy"
             cfg["include_all_day"] = field("allday") == "on"
@@ -1418,10 +1478,16 @@ def install_agent(cfg: dict) -> None:
         ))
     uid = os.getuid()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}/{LABEL}"], capture_output=True)
-    proc = subprocess.run(
-        ["launchctl", "bootstrap", f"gui/{uid}", PLIST_PATH],
-        capture_output=True, text=True,
-    )
+    # bootout returns before the old instance has fully gone, and bootstrapping
+    # over it fails with "5: Input/output error". Give it a few seconds.
+    for _ in range(10):
+        proc = subprocess.run(
+            ["launchctl", "bootstrap", f"gui/{uid}", PLIST_PATH],
+            capture_output=True, text=True,
+        )
+        if proc.returncode == 0:
+            break
+        time.sleep(0.5)
     if proc.returncode != 0:
         print(f"launchctl bootstrap failed: {proc.stderr.strip()}", file=sys.stderr)
         sys.exit(1)
@@ -1441,6 +1507,23 @@ def uninstall_agent() -> None:
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
+
+def agent_running() -> bool:
+    proc = subprocess.run(["launchctl", "print", f"gui/{os.getuid()}/{LABEL}"],
+                          capture_output=True)
+    return proc.returncode == 0
+
+
+def cmd_rotate_token(cfg: dict) -> None:
+    """Replace the web UI token. Every browser has to follow a fresh link."""
+    cfg["token"] = secrets.token_urlsafe(24)
+    save_config(cfg)
+    if agent_running():
+        # The agent holds the old token in memory until it restarts.
+        install_agent(cfg)
+    else:
+        print(f"New token saved.\nWeb UI: {url(cfg)}")
+
 
 def cmd_serve(cfg: dict) -> None:
     server = Server(("127.0.0.1", int(cfg["port"])), Handler, cfg)
@@ -1565,6 +1648,8 @@ def main() -> None:
         install_agent(cfg)
     elif command == "uninstall":
         uninstall_agent()
+    elif command == "rotate-token":
+        cmd_rotate_token(cfg)
     elif command in ("open", "setup"):
         target = url(cfg, "/setup" if command == "setup" else "/")
         webbrowser.open(target)

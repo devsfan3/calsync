@@ -117,6 +117,7 @@ do want the existing ones, there is a *Review them anyway* button.
 | `calsync scrub` | Clear notes/location/URL from every block it created |
 | `calsync install` | Install and start the launchd agent |
 | `calsync uninstall` | Stop and remove the agent |
+| `calsync rotate-token` | Issue a new web UI token, signing out every browser |
 | `calsync serve` | Run in the foreground (what the agent runs) |
 
 ## How it behaves
@@ -222,7 +223,11 @@ Where things live:
 | `~/Library/LaunchAgents/local.calsync.agent.plist` | launchd definition |
 
 The web UI listens on loopback only and requires a token, stored as a cookie the
-first time you follow a tokenised link.
+first time you follow a tokenised link (the token is then dropped from the
+address bar). It refuses requests addressed to any other host name and form
+posts from any other page, including other local web servers. If the token
+may have leaked, `calsync rotate-token` issues a new one; `calsync open` and
+the Desktop launcher pick it up automatically.
 
 ## Design notes
 

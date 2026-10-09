@@ -4,6 +4,33 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.1.0 — 2026-10-09
+
+### Features
+
+- `calsync rotate-token` issues a new web UI token and restarts the agent,
+  signing out every browser. Use it if the token may have leaked.
+  `calsync open` and the Desktop launcher pick up the new token on their own.
+
+### Privacy
+
+- The review page now rejects form posts from any other page, including
+  pages served by other web servers on this Mac. The cookie's SameSite
+  setting alone did not cover those, because browsers treat every port on
+  127.0.0.1 as the same site.
+- Requests addressed to any host name other than `127.0.0.1` or `localhost`
+  are refused, which blocks DNS-rebinding attacks.
+- The token is checked in constant time against the parsed cookie, the cookie
+  is now `HttpOnly`, and a tokenised link is swapped for the cookie straight
+  away so the token does not stay in the address bar.
+
+### Fixes
+
+- A non-numeric "Look ahead" or "Check every" value on the Setup page no
+  longer breaks the save; the previous value is kept.
+- `calsync install` no longer fails intermittently with
+  "Bootstrap failed: 5: Input/output error" when restarting a running agent.
+
 ## 1.0.4 — 2026-10-09
 
 ### Privacy
