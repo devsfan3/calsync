@@ -111,6 +111,8 @@ with nothing but a clone and `./build.sh`.
 ## Before committing
 
 - `python3 -c "import ast; ast.parse(open('calsync.py').read())"`
+- `python3 -m unittest discover -s tests` and the same with `/usr/bin/python3`
+  (the oldest supported Python, 3.9) both pass.
 - `./build.sh` succeeds and `calsync version` shows the new number with no
   mismatch warning and no `-dirty` suffix after the commit.
 - No secrets: the repo must never contain the web UI token, calendar

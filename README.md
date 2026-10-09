@@ -96,6 +96,10 @@ On the setup page:
    be asked about.
 2. **Work calendar to block** — pick exactly one. Only writable, non-subscribed
    calendars are listed.
+   CalSync only ever changes or removes events on the calendar chosen here.
+   If you later switch to a different work calendar, blocks it already made
+   on the old one are left alone: delete those by hand if you no longer want
+   them.
 3. Adjust the title style, look-ahead window and poll interval if you like, then
    **Save settings**.
 
@@ -328,6 +332,19 @@ themselves on the next scan. Release notes are in [CHANGELOG.md](CHANGELOG.md).
 If you are contributing: every change bumps `VERSION` and adds a changelog
 entry in the same commit, so a version always identifies exactly one build.
 [CLAUDE.md](CLAUDE.md) has the rule and the project's other constraints.
+
+## Tests
+
+The tests use only the standard library. Run them with whichever Python runs
+CalSync, and ideally with the oldest supported one too:
+
+```bash
+python3 -m unittest discover -s tests
+/usr/bin/python3 -m unittest discover -s tests   # the macOS system Python
+```
+
+They never touch your calendars, config or state: they run against a
+throwaway home folder.
 
 ## Uninstall
 

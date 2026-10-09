@@ -4,6 +4,25 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.1.1 — 2026-10-09
+
+### Fixes
+
+- **Works on the macOS system Python (3.9) again.** Python before 3.11 could
+  not read the dates the helper writes, so on those versions every date was
+  treated as unknown, with no error. Weekend events were not skipped, a
+  deleted personal event never offered to remove its work block (leaving
+  stale busy time on your work calendar), and dates showed as raw text.
+  Update if `calsync version` shows a Python older than 3.11.
+
+### Changed
+
+- Added a test suite (`tests/`, standard library only) covering date
+  handling, weekend detection, event identity, scanning and approvals, and
+  the web UI's token and origin checks.
+- The README now says that switching to a different work calendar leaves
+  blocks on the old one for you to delete by hand.
+
 ## 1.1.0 — 2026-10-09
 
 ### Features

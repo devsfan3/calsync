@@ -856,6 +856,11 @@ def recent_rows(limit: int = 40) -> list[sqlite3.Row]:
 # --------------------------------------------------------------------------
 
 def parse_iso(value: str) -> datetime | None:
+    # The helper writes UTC as a trailing "Z", which fromisoformat only accepts
+    # from Python 3.11. Before that it raised, every date read as unknown, and
+    # weekend skipping and vanished-event detection quietly did nothing.
+    if isinstance(value, str) and value.endswith(("Z", "z")):
+        value = value[:-1] + "+00:00"
     try:
         return datetime.fromisoformat(value)
     except (ValueError, TypeError):
