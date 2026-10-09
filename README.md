@@ -27,7 +27,7 @@ work calendar ──────┘       (EventKit)       (state + poll)    127
 
 | | |
 | --- | --- |
-| macOS | 13 (Ventura) or later. Developed on macOS 26–27. |
+| macOS | Tested on macOS 26–27. The helper is built to run on 13 (Ventura) or later, but 13–25 have not been tried — reports welcome. |
 | Xcode Command Line Tools | For `swiftc`. Install with `xcode-select --install`. |
 | Python | 3.9+ — the system `python3` is fine. Standard library only. |
 | Calendar accounts | **Both** calendars must be visible in the built-in Calendar app. |

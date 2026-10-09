@@ -4,6 +4,14 @@ Versions follow [semantic versioning](https://semver.org). The version lives in
 the `VERSION` file, which `build.sh` stamps into the app bundle — run
 `calsync version` to see what is actually installed.
 
+## 1.1.3 — 2026-10-09
+
+### Changed
+
+- The README now says which macOS versions CalSync has actually been tested
+  on (26–27). It is still built to run on macOS 13 or later, but 13–25 are
+  untested. No change to CalSync itself.
+
 ## 1.1.2 — 2026-10-09
 
 ### Changed
